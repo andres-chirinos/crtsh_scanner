@@ -1,0 +1,98 @@
+name: Fetch Information
+
+on:
+  workflow_dispatch:
+    inputs:
+      domain:
+        description: Domain to query in crt.sh
+        required: true
+        default: sociest.org
+        type: string
+      exclude_expired:
+        description: Exclude expired certificates
+        required: false
+        default: true
+        type: boolean
+      extended:
+        description: Include extended wildcard search
+        required: false
+        default: false
+        type: boolean
+      uncached:
+        description: Return only domains from unseen certificates
+        required: false
+        default: false
+        type: boolean
+  schedule:
+    - cron: "0 6 * * *" # Ejecuta diariamente a las 6 AM UTC
+
+jobs:
+  fetch-info:
+    runs-on: ubuntu-latest
+    env:
+      DEFAULT_DOMAIN: sociest.org
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Resolve execution options
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "DOMAIN=${{ inputs.domain }}" >> "$GITHUB_ENV"
+            echo "EXCLUDE_EXPIRED=${{ inputs.exclude_expired }}" >> "$GITHUB_ENV"
+            echo "EXTENDED=${{ inputs.extended }}" >> "$GITHUB_ENV"
+            echo "UNCACHED=${{ inputs.uncached }}" >> "$GITHUB_ENV"
+          else
+            echo "DOMAIN=${DEFAULT_DOMAIN}" >> "$GITHUB_ENV"
+            echo "EXCLUDE_EXPIRED=true" >> "$GITHUB_ENV"
+            echo "EXTENDED=false" >> "$GITHUB_ENV"
+            echo "UNCACHED=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Fetch domains and generate CSV
+        run: |
+          args=(--domain "$DOMAIN" --csv state/domains.csv)
+
+          if [[ "$EXCLUDE_EXPIRED" == "true" ]]; then
+            args+=(--exclude_expired)
+          fi
+
+          if [[ "$EXTENDED" == "true" ]]; then
+            args+=(--extended)
+          fi
+
+          if [[ "$UNCACHED" == "true" ]]; then
+            args+=(--uncached)
+          fi
+
+          python crtsh_scanner.py "${args[@]}"
+
+      - name: Fetch raw crt.sh JSON (reference)
+        run: |
+          query_url="https://crt.sh/?output=json&Identity=$DOMAIN"
+
+          if [[ "$EXCLUDE_EXPIRED" == "true" ]]; then
+            query_url="${query_url}&exclude=expired"
+          fi
+
+          curl -s "$query_url" > state/crtsh_output.json
+
+      - name: Upload fetched data as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: crtsh-data
+          path: |
+            state/domains.csv
+            state/crtsh_output.json
+            state/seen_cert_ids.txt
+          if-no-files-found: warn
