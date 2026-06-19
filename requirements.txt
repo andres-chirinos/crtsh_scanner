@@ -1,2 +1,4 @@
 requests
 publicsuffixlist
+pandas
+psycopg2-binary

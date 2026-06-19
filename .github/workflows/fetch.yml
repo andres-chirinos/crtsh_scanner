@@ -3,23 +3,46 @@ name: Fetch Information
 on:
   workflow_dispatch:
     inputs:
-      domain:
-        description: Domain to query in crt.sh
+      query_type:
+        description: "Tipo de búsqueda: domain o keyword"
         required: true
-        default: sociest.org
+        default: "domain"
+        type: choice
+        options:
+          - domain
+          - keyword
+      query:
+        description: "Consulta (dominio base o palabra clave)"
+        required: true
+        default: "sociest.org"
+        type: string
+      use_db:
+        description: "Usar conexión directa a BD (PostgreSQL)"
+        required: false
+        default: false
+        type: boolean
+      levels:
+        description: "Niveles extra de subdominios permitidos (para dominios)"
+        required: false
+        default: ""
+        type: string
+      db_limit:
+        description: "Límite de registros (para --use-db)"
+        required: false
+        default: "30000"
         type: string
       exclude_expired:
-        description: Exclude expired certificates
+        description: "Exclude expired certificates"
         required: false
         default: true
         type: boolean
       extended:
-        description: Include extended wildcard search
+        description: "Include extended wildcard search"
         required: false
         default: false
         type: boolean
       uncached:
-        description: Return only domains from unseen certificates
+        description: "Return only domains from unseen certificates"
         required: false
         default: false
         type: boolean
@@ -42,24 +65,47 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install psycopg2-binary publicsuffixlist
 
       - name: Resolve execution options
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "DOMAIN=${{ inputs.domain }}" >> "$GITHUB_ENV"
+            echo "QUERY_TYPE=${{ inputs.query_type }}" >> "$GITHUB_ENV"
+            echo "QUERY=${{ inputs.query }}" >> "$GITHUB_ENV"
+            echo "USE_DB=${{ inputs.use_db }}" >> "$GITHUB_ENV"
+            echo "LEVELS=${{ inputs.levels }}" >> "$GITHUB_ENV"
+            echo "DB_LIMIT=${{ inputs.db_limit }}" >> "$GITHUB_ENV"
             echo "EXCLUDE_EXPIRED=${{ inputs.exclude_expired }}" >> "$GITHUB_ENV"
             echo "EXTENDED=${{ inputs.extended }}" >> "$GITHUB_ENV"
             echo "UNCACHED=${{ inputs.uncached }}" >> "$GITHUB_ENV"
           else
-            echo "DOMAIN=${DEFAULT_DOMAIN}" >> "$GITHUB_ENV"
+            echo "QUERY_TYPE=domain" >> "$GITHUB_ENV"
+            echo "QUERY=${DEFAULT_DOMAIN}" >> "$GITHUB_ENV"
+            echo "USE_DB=false" >> "$GITHUB_ENV"
+            echo "LEVELS=" >> "$GITHUB_ENV"
+            echo "DB_LIMIT=30000" >> "$GITHUB_ENV"
             echo "EXCLUDE_EXPIRED=true" >> "$GITHUB_ENV"
             echo "EXTENDED=false" >> "$GITHUB_ENV"
             echo "UNCACHED=false" >> "$GITHUB_ENV"
           fi
 
-      - name: Fetch domains and generate CSV
+      - name: Fetch domains and generate results
         run: |
-          args=(--domain "$DOMAIN" --csv state/domains.csv)
+          args=(--csv data/domains.csv --json data/certificates.json --analyze-csv data/analysis.csv --state-dir data)
+
+          if [[ "$QUERY_TYPE" == "keyword" ]]; then
+            args+=(--keyword "$QUERY")
+          else
+            args+=(--domain "$QUERY")
+          fi
+
+          if [[ "$USE_DB" == "true" ]]; then
+            args+=(--use-db --db-limit "$DB_LIMIT")
+          fi
+
+          if [[ -n "$LEVELS" ]]; then
+            args+=(--levels "$LEVELS")
+          fi
 
           if [[ "$EXCLUDE_EXPIRED" == "true" ]]; then
             args+=(--exclude_expired)
@@ -75,22 +121,30 @@ jobs:
 
           python crtsh_scanner.py "${args[@]}"
 
-      - name: Fetch raw crt.sh JSON (reference)
-        run: |
-          query_url="https://crt.sh/?output=json&Identity=$DOMAIN"
-
-          if [[ "$EXCLUDE_EXPIRED" == "true" ]]; then
-            query_url="${query_url}&exclude=expired"
+          # Generar archivo de texto simple y mostrar en GitHub Step Summary
+          if [[ -f data/domains.csv ]]; then
+            tail -n +2 data/domains.csv > data/domains.txt
+            echo "### Resultados Encontrados: $(wc -l < data/domains.txt | awk '{print $1}')" >> $GITHUB_STEP_SUMMARY
+            echo '```text' >> $GITHUB_STEP_SUMMARY
+            cat data/domains.txt >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
           fi
 
-          curl -s "$query_url" > state/crtsh_output.json
+          if [[ -f data/analysis.csv ]]; then
+            echo "### Análisis de Subdominios" >> $GITHUB_STEP_SUMMARY
+            echo "| Dominio | Nivel | Primera vez visto | Última vez visto | Vigente |" >> $GITHUB_STEP_SUMMARY
+            echo "|---------|-------|-------------------|------------------|---------|" >> $GITHUB_STEP_SUMMARY
+            tail -n +2 data/analysis.csv | awk -F',' '{printf "| %s | %s | %s | %s | %s |\n", $1, $2, $3, $4, $5}' >> $GITHUB_STEP_SUMMARY
+          fi
 
       - name: Upload fetched data as artifact
         uses: actions/upload-artifact@v4
         with:
           name: crtsh-data
           path: |
-            state/domains.csv
-            state/crtsh_output.json
-            state/seen_cert_ids.txt
+            data/domains.csv
+            data/domains.txt
+            data/analysis.csv
+            data/certificates.json
+            data/seen_cert_ids.txt
           if-no-files-found: warn

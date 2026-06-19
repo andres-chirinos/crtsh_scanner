@@ -4,25 +4,35 @@ A tool to discover domains using crt.sh site.
 # Install
 ```console
 pip install -r requirements.txt
+pip install psycopg2-binary publicsuffixlist  # Recommended for --use-db and domain parsing
 ```
 
 # Usage
 ```console
-usage: crtsh_scanner.py [-h] --domain N [N ...] [--extended]
-                        [--exclude_expired] [--uncached]
+usage: crtsh_scanner.py [-h] (--domain N [N ...] | --keyword K [K ...])
+                        [--extended] [--exclude_expired] [--uncached]
+                        [--csv FILE] [--use-db] [--db-limit DB_LIMIT]
+                        [--levels LEVELS]
 
 Discover domains using crt.sh.
 
 optional arguments:
   -h, --help            show this help message and exit
   --domain N [N ...], -d N [N ...]
-                        crt.sh domain query. Specify multiple using --domain
-                        <domain>
+                        crt.sh domain query. Specify multiple using --domain <domain>
+  --keyword K [K ...], -k K [K ...]
+                        crt.sh keyword query (e.g., 'bolivia'). Specify multiple using --keyword <keyword>
   --extended            include wildcard searches with domain private suffix
                         ('google.%.%' for 'google.com').
   --exclude_expired     Exclude expired certificates.
-  --uncached            Only return domains not previously discovered (not in
-                        PEM cache).
+  --uncached            Only return domains not previously discovered (not in PEM cache).
+  --csv FILE            Save discovered domains to CSV (e.g. --csv domains.csv).
+  --use-db              Query the crt.sh PostgreSQL database directly instead of the HTTP API.
+  --db-limit DB_LIMIT   Maximum number of records to retrieve when using --use-db.
+  --levels LEVELS       Extra subdomain levels to allow when querying by domain (e.g. 1, 2).
+  --json FILE           Save raw certificate JSON data to file.
+  --analyze-csv FILE    Save subdomain analysis (first seen, last seen, status, level) to CSV.
+  --state-dir DIR       Directory to save state (seen certs cache). Default: state
 ```
 
 # Example
@@ -62,7 +72,7 @@ New domains found: 4.  Total: 4
 Include crt.sh wildcard searches in domain discovery.  Depending on how domain name, this could result in a large number of results.
 ```console
 $ python crtsh_scanner.py -d crizal.com --extended
-Domain: ['crizal.com'], Extended: True, Exclude Expired: False, Uncached: False
+Domain: ['crizal.com'], Keyword: None, Extended: True, Levels: None, Exclude Expired: False, Uncached: False, Use DB: False
 https://crt.sh/?output=json&Identity=crizal.com
 New domains found: 45.  Total: 45
 https://crt.sh/?output=json&q=crizal.%25.%25
@@ -73,3 +83,20 @@ New domains found: 2.  Total: 8
 {'crizal.com.br', 'www.essilorpro.nl', 'www.essilorpro.no', 'www.essilorpro.fi', 'www.admin.eservices.essilor.com', 'www.essilorpro.dk', 'admin.eservices.bbgr.com', 'admin.eservices.essilor.com', 'bbgr.med-cis.com', 'www.essilor.hu', 'www.essilor.rs', 'www.essilor.cz', 'www.essilor.de', 'www.varilux.com.tr', 'www.crizal.com.br', 'www.bbgr.es', 'www.essilor.bg', 'tracking.essilor.ch', 'www.crizal.de', 'crizal.com.ar', 'crizal.com', 'www.essilor.co.il', 'admin.valoptec.com', 'www.essilor.ch', 'www.essilorpro.se', 'www.xperio.es', 'crizal.co.za', 'www.essilorpro.es', 'www.crizal.es', 'www.essilor.si', 'www.crizal.co.za', 'essilor.ca', 'www.optifog.de', 'eyestation.bbgr.com', 'www.crizal.com.tr', 'www.valoptec.com', 'www.essilor.med-cis.com', 'www.essilor.pl', 'www.xperio.de', 'www.essilorpro.co.uk', 'www.eyezen.de', 'www.essilor.hr', 'www.essilorpro.de', 'www.essilor.ro', 'www.crizal.com', 'essilor.med-cis.com', 'crizal.com.tr', 'www.essilor.sk', 'www.essilorpro.be', 'www.essilorpro.pt', 'www.essilor.ca', '*.crizal.com.ar'}
 ```
 
+Discover domains using a keyword in the crt.sh PostgreSQL database, limiting output levels.
+```console
+$ python crtsh_scanner.py -d example.com --levels 1 --use-db --db-limit 1000
+Domain: ['example.com'], Keyword: None, Extended: False, Levels: 1, Exclude Expired: False, Uncached: False, Use DB: True
+--- [DB Query Attempt 1/5] querying example.com ---
+New domains found via DB: 3. Total: 3
+{'example.com', 'www.example.com', 'test.example.com'}
+```
+
+Perform a subdomain analysis, exporting raw JSON and analysis files.
+```console
+$ python crtsh_scanner.py -d example.com --analyze-csv analysis.csv --json certificates.json
+Domain: ['example.com'], Keyword: None, ...
+JSON saved to: certificates.json (15 cert records)
+Analysis CSV saved to: analysis.csv (10 domains)
+```
+The analysis CSV will contain: `domain, level, first_seen, last_seen, is_active`, allowing you to see exactly when a domain appeared, when it disappeared, and if it's currently valid (Vigente/Expirado).
