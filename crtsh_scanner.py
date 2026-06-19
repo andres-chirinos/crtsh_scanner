@@ -90,9 +90,8 @@ def get_subdomains_by_keyword_db(keyword, args):
     pattern = f"%{keyword}%"
     
     query = """
-        SELECT cai.NAME_VALUE AS dominio, c.NOT_BEFORE, c.NOT_AFTER
+        SELECT cai.NAME_VALUE AS dominio, NULL AS NOT_BEFORE, NULL AS NOT_AFTER
         FROM certificate_and_identities cai
-        LEFT JOIN certificate c ON cai.CERTIFICATE_ID = c.ID
         WHERE plainto_tsquery('certwatch', %s) @@ identities(cai.CERTIFICATE)
           AND (cai.NAME_VALUE ILIKE %s OR cai.NAME_VALUE = %s)
         LIMIT %s;
@@ -139,7 +138,7 @@ def get_subdomains_by_keyword_db(keyword, args):
             error_msg = str(exc).splitlines()[0] if str(exc) else "Unknown error"
             print(f"   [Fallo Intento {attempt}] {error_msg}")
             if attempt < retries:
-                time.sleep(random.randint(5, 12))
+                time.sleep(random.randint(15, 30))
             else:
                 print("   [DB Query] Capacidad agotada.")
                 return subdomains
@@ -178,9 +177,8 @@ def get_subdomains_db(domain, args, extended=None):
         points_base = query_domain.count(".")
         points_max = points_base + args.levels
         query = """
-            SELECT cai.NAME_VALUE AS dominio, c.NOT_BEFORE, c.NOT_AFTER
+            SELECT cai.NAME_VALUE AS dominio, NULL AS NOT_BEFORE, NULL AS NOT_AFTER
             FROM certificate_and_identities cai
-            LEFT JOIN certificate c ON cai.CERTIFICATE_ID = c.ID
             WHERE plainto_tsquery('certwatch', %s) @@ identities(cai.CERTIFICATE)
               AND (cai.NAME_VALUE ILIKE %s OR cai.NAME_VALUE = %s)
               AND (LENGTH(cai.NAME_VALUE) - LENGTH(REPLACE(cai.NAME_VALUE, '.', ''))) <= %s
@@ -189,9 +187,8 @@ def get_subdomains_db(domain, args, extended=None):
         query_params = (query_domain, pattern, query_domain, points_max, limit_val)
     else:
         query = """
-            SELECT cai.NAME_VALUE AS dominio, c.NOT_BEFORE, c.NOT_AFTER
+            SELECT cai.NAME_VALUE AS dominio, NULL AS NOT_BEFORE, NULL AS NOT_AFTER
             FROM certificate_and_identities cai
-            LEFT JOIN certificate c ON cai.CERTIFICATE_ID = c.ID
             WHERE plainto_tsquery('certwatch', %s) @@ identities(cai.CERTIFICATE)
               AND (cai.NAME_VALUE ILIKE %s OR cai.NAME_VALUE = %s)
             LIMIT %s;
@@ -239,7 +236,7 @@ def get_subdomains_db(domain, args, extended=None):
             error_msg = str(exc).splitlines()[0] if str(exc) else "Unknown error"
             print(f"   [Fallo Intento {attempt}] {error_msg}")
             if attempt < retries:
-                time.sleep(random.randint(5, 12))
+                time.sleep(random.randint(15, 30))
             else:
                 print("   [DB Query] Capacidad agotada.")
                 return subdomains
