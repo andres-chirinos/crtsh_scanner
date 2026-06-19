@@ -1,0 +1,82 @@
+name: Recon Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Dominio raíz para realizar el reconocimiento (ej. umsa o umsa.bo)"
+        required: true
+        default: "umsa.bo"
+        type: string
+
+jobs:
+  recon:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Prepara directorios
+        run: mkdir -p data
+
+      - name: 1. Ejecutar NIC.BO Whois
+        run: |
+          ./scripts/whois_bo.py --target "${{ inputs.target }}" > data/1_whois.csv
+          
+          # Extraer todos los dominios generados por el Whois usando Python para parsear el CSV robustamente
+          python -c "import csv; [print(r['whois_dominio']) for r in csv.DictReader(open('data/1_whois.csv')) if r.get('ok')=='True' and r.get('whois_dominio')]" | sort -u > data/whois_targets.txt || true
+
+      - name: 2. Ejecutar crt.sh para encontrar subdominios
+        run: |
+          # Si whois no encontró dominios, usamos el target inicial
+          if [ ! -s data/whois_targets.txt ]; then
+            echo "${{ inputs.target }}" > data/whois_targets.txt
+          fi
+          
+          ./scripts/crtsh.py --file data/whois_targets.txt > data/2_crtsh.csv
+          
+          # Extraer todos los subdominios únicos descubiertos de la columna crt_subdomain
+          python -c "import csv; [print(r['crt_subdomain']) for r in csv.DictReader(open('data/2_crtsh.csv')) if r.get('ok')=='True' and r.get('crt_subdomain')]" | sort -u > data/subdomains.txt || true
+
+          # Si crt.sh tampoco encontró nada, seguimos con lo que había
+          if [ ! -s data/subdomains.txt ]; then
+            cat data/whois_targets.txt > data/subdomains.txt
+          fi
+
+      - name: 3. Ejecutar escaneos en paralelo (Ping, DNS, Dig, IPGuide, Curl, OpenRank)
+        env:
+          OPEN_RANK_API_KEY: ${{ secrets.OPEN_RANK_API_KEY }}
+        run: |
+          echo "Escaneando $(wc -l < data/subdomains.txt) subdominios..."
+          ./scripts/dnslookup.py --file data/subdomains.txt > data/3_dnslookup.csv &
+          ./scripts/dig.py --file data/subdomains.txt > data/3_dig.csv &
+          ./scripts/ping.py --file data/subdomains.txt --count 2 > data/3_ping.csv &
+          ./scripts/curl.py --file data/subdomains.txt > data/3_curl.csv &
+          ./scripts/ipguide.py --file data/subdomains.txt > data/3_ipguide.csv &
+          ./scripts/open_rank.py --file data/subdomains.txt > data/3_open_rank.csv &
+          wait
+          echo "Todos los escaneos completados."
+
+      - name: Resumen en GitHub Actions
+        run: |
+          echo "### Reconocimiento finalizado para ${{ inputs.target }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Whois NIC.BO**: $(wc -l < data/whois_targets.txt) dominios encontrados." >> $GITHUB_STEP_SUMMARY
+          echo "- **Subdominios (crt.sh)**: $(wc -l < data/subdomains.txt) subdominios enumerados." >> $GITHUB_STEP_SUMMARY
+          echo "CSVs generados y adjuntos como Artifacts." >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload fetched data as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: recon-data-${{ inputs.target }}
+          path: data/*.csv
+          if-no-files-found: warn

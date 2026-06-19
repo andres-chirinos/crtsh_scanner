@@ -14,3 +14,11 @@ Este script ejecuta una prueba de conectividad ICMP (`ping`) contra un objetivo 
 
 ## Ejemplo de salida
 Devuelve un JSON con el estado de la ejecución, código de salida, además de la salida estándar (`stdout`) que contiene las estadísticas de pérdida de paquetes y latencia, así como la salida de error (`stderr`) del comando.
+
+## Esquema CSV
+Genera una sola fila por objetivo. Contiene las columnas estándar y agrega:
+- `raw_output`: Todo el texto (`stdout`) generado por el comando ping del sistema operativo. A partir de esta columna se puede parsear posteriormente el porcentaje de pérdida de paquetes y la latencia (RTT).
+
+## Esquema CSV
+Genera una sola fila por objetivo. Contiene las columnas estándar y agrega:
+- `raw_output`: Todo el texto (`stdout`) generado por el comando ping del sistema operativo. A partir de esta columna se puede parsear posteriormente el porcentaje de pérdida de paquetes y la latencia (RTT).

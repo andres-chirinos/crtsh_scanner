@@ -3,3 +3,5 @@ publicsuffixlist
 pandas
 psycopg2-binary
 dnspython
+beautifulsoup4
+python-dotenv

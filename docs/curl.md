@@ -14,3 +14,11 @@ Este script actúa como un envoltorio simplificado para el comando del sistema `
 
 ## Ejemplo de salida
 Devuelve un CSV estandarizado (compatible con el resto de la suite de red) que incluye una columna `raw_output` con el contenido del cuerpo de la respuesta o mensaje de error HTTP si no fuera accesible.
+
+## Esquema CSV
+Genera una sola fila por objetivo. Contiene las columnas estándar y agrega:
+- `raw_output`: El código HTML, JSON, o el cuerpo de la página consultada, extraído directamente por curl, permitiendo verificar de forma rápida si el servidor web responde.
+
+## Esquema CSV
+Genera una sola fila por objetivo. Contiene las columnas estándar y agrega:
+- `raw_output`: El código HTML, JSON, o el cuerpo de la página consultada, extraído directamente por curl, permitiendo verificar de forma rápida si el servidor web responde.

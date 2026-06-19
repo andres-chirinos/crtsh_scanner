@@ -14,3 +14,11 @@ Este script efectúa una consulta completa al sistema de nombres de dominio util
 
 ## Ejemplo de salida
 Devuelve un JSON con la salida exhaustiva (`stdout`) del comando `dig`, incluyendo las secciones de "QUESTION SECTION", "ANSWER SECTION", "AUTHORITY SECTION" y los metadatos de los tiempos de petición del servidor.
+
+## Esquema CSV
+Genera una sola fila por objetivo. Contiene las columnas estándar y agrega:
+- `raw_output`: Todo el texto exhaustivo de la respuesta del protocolo DNS (Sección QUESTION, ANSWER, tiempos de TTL, servidores DNS autoritativos, etc).
+
+## Esquema CSV
+Genera una sola fila por objetivo. Contiene las columnas estándar y agrega:
+- `raw_output`: Todo el texto exhaustivo de la respuesta del protocolo DNS (Sección QUESTION, ANSWER, tiempos de TTL, servidores DNS autoritativos, etc).

@@ -14,3 +14,11 @@ Este script realiza consultas simplificadas de registros DNS para obtener respue
 
 ## Ejemplo de salida
 Devuelve un JSON con un listado limpio de los registros, ideal para extraer direcciones IP, servidores de correo (MX) u otros registros puntuales de forma automatizada (ya que suprime las cabeceras).
+
+## Esquema CSV
+Genera una sola fila por objetivo. Contiene las columnas estándar y agrega:
+- `raw_output`: Una lista separada por saltos de línea de las respuestas DNS (ej. direcciones IP para el registro A, o dominios para CNAME/MX), ya que usa `dig +short`.
+
+## Esquema CSV
+Genera una sola fila por objetivo. Contiene las columnas estándar y agrega:
+- `raw_output`: Una lista separada por saltos de línea de las respuestas DNS (ej. direcciones IP para el registro A, o dominios para CNAME/MX), ya que usa `dig +short`.

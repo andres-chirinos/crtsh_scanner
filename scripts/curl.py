@@ -3,11 +3,22 @@ import argparse
 from toolkit_utils import fail, now_iso, ensure_command, run_command, get_targets, print_csv
 
 def run_curl(target: str):
-    # No usamos validate_host_target aquí porque curl espera URLs completas a menudo
     ensure_command("curl")
-    cmd = ["curl", "-sL", target]
-    result = run_command(cmd, timeout=30)
-    return {"ok": True, "command": " ".join(cmd), "result": result}
+    url = target if target.startswith("http") else f"http://{target}"
+    cmd = [
+        "curl", "-o", "/dev/null", "-s", "-w", "%{http_code},%{time_total}", 
+        "-L", "--max-time", "15", url
+    ]
+    result = run_command(cmd, timeout=20)
+    
+    if result.get("ok"):
+        try:
+            code, time = result["stdout"].strip().split(",")
+            return {"ok": True, "curl_http_code": code, "curl_latency_seconds": time}
+        except Exception:
+            return {"ok": False, "error": "Fallo al parsear curl output"}
+    else:
+        return {"ok": False, "error": result.get("stderr", "Error de red en curl")}
 
 def main():
     parser = argparse.ArgumentParser(description="Script para hacer fetch a URLs usando curl")
@@ -22,17 +33,20 @@ def main():
     results = []
     for t in targets:
         out = run_curl(t)
-        ok = out.get("ok", False) and out.get("result", {}).get("ok", False)
+        ok = out.get("ok", False)
         
         payload = {
             "timestamp": now_iso(),
             "action": "curl",
             "target": t,
             "ok": ok,
-            "status": out.get("result", {}).get("returncode", ""),
-            "raw_output": out.get("result", {}).get("stdout", "").strip() if ok else out.get("result", {}).get("stderr", "").strip(),
-            "error": out.get("error", "") if not out.get("ok", False) else ""
+            "status": out.get("curl_http_code", "") if ok else "",
+            "error": out.get("error", "") if not ok else ""
         }
+        if ok:
+            payload["curl_http_code"] = out.get("curl_http_code")
+            payload["curl_latency_seconds"] = out.get("curl_latency_seconds")
+            
         results.append(payload)
 
     print_csv(results)

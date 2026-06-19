@@ -15,9 +15,24 @@ def run_dig(target: str, record_type: str):
         return {"ok": False, "error": "Tipo DNS no permitido"}
 
     ensure_command("dig")
-    cmd = ["dig", host, dns_type]
+    cmd = ["dig", "+noall", "+answer", host, dns_type]
     result = run_command(cmd, timeout=20)
-    return {"ok": True, "command": " ".join(cmd), "result": result}
+    
+    if result["ok"]:
+        answers = []
+        for line in result["stdout"].splitlines():
+            parts = line.split()
+            if len(parts) >= 5:
+                answers.append({
+                    "record_name": parts[0],
+                    "ttl": parts[1],
+                    "class": parts[2],
+                    "type": parts[3],
+                    "value": " ".join(parts[4:])
+                })
+        return {"ok": True, "answers": answers}
+    else:
+        return {"ok": False, "error": result["stderr"]}
 
 def main():
     parser = argparse.ArgumentParser()
@@ -33,18 +48,34 @@ def main():
     results = []
     for t in targets:
         out = run_dig(t, args.record_type)
-        ok = out.get("ok", False) and out.get("result", {}).get("ok", False)
-        
         payload = {
             "timestamp": now_iso(),
             "action": "dig",
             "target": t,
-            "ok": ok,
-            "status": out.get("result", {}).get("returncode", ""),
-            "raw_output": out.get("result", {}).get("stdout", "").strip() if ok else out.get("result", {}).get("stderr", "").strip(),
-            "error": out.get("error", "") if not out.get("ok", False) else ""
+            "ok": out.get("ok", False),
+            "status": "0" if out.get("ok") else "1",
+            "error": out.get("error", "")
         }
-        results.append(payload)
+        
+        if payload["ok"]:
+            answers = out.get("answers", [])
+            if not answers:
+                payload["ok"] = False
+                payload["error"] = "Sin registros de respuesta"
+                results.append(payload)
+            else:
+                for ans in answers:
+                    row = payload.copy()
+                    row.update({
+                        "dig_record_name": ans["record_name"],
+                        "dig_ttl": ans["ttl"],
+                        "dig_class": ans["class"],
+                        "dig_type": ans["type"],
+                        "dig_value": ans["value"]
+                    })
+                    results.append(row)
+        else:
+            results.append(payload)
 
     print_csv(results)
 
