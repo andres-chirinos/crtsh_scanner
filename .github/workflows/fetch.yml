@@ -46,6 +46,16 @@ on:
         required: false
         default: false
         type: boolean
+      output_json:
+        description: "Generar archivo JSON con certificados crudos"
+        required: false
+        default: true
+        type: boolean
+      output_analysis:
+        description: "Generar archivo CSV con análisis temporal"
+        required: false
+        default: true
+        type: boolean
 
 jobs:
   fetch-info:
@@ -78,6 +88,8 @@ jobs:
             echo "EXCLUDE_EXPIRED=${{ inputs.exclude_expired }}" >> "$GITHUB_ENV"
             echo "EXTENDED=${{ inputs.extended }}" >> "$GITHUB_ENV"
             echo "UNCACHED=${{ inputs.uncached }}" >> "$GITHUB_ENV"
+            echo "OUTPUT_JSON=${{ inputs.output_json }}" >> "$GITHUB_ENV"
+            echo "OUTPUT_ANALYSIS=${{ inputs.output_analysis }}" >> "$GITHUB_ENV"
           else
             echo "QUERY_TYPE=domain" >> "$GITHUB_ENV"
             echo "QUERY=${DEFAULT_DOMAIN}" >> "$GITHUB_ENV"
@@ -87,11 +99,21 @@ jobs:
             echo "EXCLUDE_EXPIRED=true" >> "$GITHUB_ENV"
             echo "EXTENDED=false" >> "$GITHUB_ENV"
             echo "UNCACHED=false" >> "$GITHUB_ENV"
+            echo "OUTPUT_JSON=true" >> "$GITHUB_ENV"
+            echo "OUTPUT_ANALYSIS=true" >> "$GITHUB_ENV"
           fi
 
       - name: Fetch domains and generate results
         run: |
-          args=(--csv data/domains.csv --json data/certificates.json --analyze-csv data/analysis.csv --state-dir data)
+          args=(--csv data/domains.csv --state-dir data)
+
+          if [[ "$OUTPUT_JSON" == "true" ]]; then
+            args+=(--json data/certificates.json)
+          fi
+
+          if [[ "$OUTPUT_ANALYSIS" == "true" ]]; then
+            args+=(--analyze-csv data/analysis.csv)
+          fi
 
           if [[ "$QUERY_TYPE" == "keyword" ]]; then
             args+=(--keyword "$QUERY")
