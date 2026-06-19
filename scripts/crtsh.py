@@ -28,10 +28,12 @@ def lookup_crtsh(query: str):
     except HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
         return {"ok": False, "status_code": exc.code, "error": body}
-    except URLError as exc:
-        return {"ok": False, "status_code": None, "error": str(exc)}
+    except (URLError, TimeoutError) as exc:
+        return {"ok": False, "status_code": None, "error": f"Error de red o timeout: {str(exc)}"}
     except json.JSONDecodeError:
         return {"ok": False, "status_code": 200, "error": "Respuesta no JSON"}
+    except Exception as exc:
+        return {"ok": False, "status_code": None, "error": f"Error inesperado: {str(exc)}"}
 
 def main():
     parser = argparse.ArgumentParser(description="Consulta de subdominios en crt.sh")
