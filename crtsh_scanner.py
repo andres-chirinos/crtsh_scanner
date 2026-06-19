@@ -283,6 +283,8 @@ def get_subdomains_db(domain, args, extended=None):
     return subdomains
 
 
+import re
+
 def normalize_domain(value):
     """Normalize DNS names found in certificates."""
     if not value:
@@ -291,8 +293,11 @@ def normalize_domain(value):
     if value.startswith("*."):
         value = value[2:]
     value = value.strip(".")
-    if " " in value or "," in value or "@" in value or "\\" in value or "”" in value or '"' in value:
+    
+    # Check for invalid characters (only allow alphanumeric, dash, dot, and asterisk)
+    if not re.match(r'^[a-z0-9\.\-\*]+$', value):
         return ""
+        
     return value
 
 

@@ -165,7 +165,7 @@ jobs:
             echo "### Análisis de Subdominios" >> $GITHUB_STEP_SUMMARY
             echo "| Dominio | Nivel | Primera vez visto | Última vez visto | Vigente |" >> $GITHUB_STEP_SUMMARY
             echo "|---------|-------|-------------------|------------------|---------|" >> $GITHUB_STEP_SUMMARY
-            tail -n +2 data/analysis.csv | awk -F',' '{printf "| %s | %s | %s | %s | %s |\n", $1, $2, $3, $4, $5}' >> $GITHUB_STEP_SUMMARY
+            python -c "import csv; [print(f'| {r[0]} | {r[1]} | {r[2]} | {r[3]} | {r[4]} |') for r in ([x.strip().replace('\n', ' ').replace('\r', '') for x in row + ['']*(5-len(row))] for row in list(csv.reader(open('data/analysis.csv', encoding='utf-8')))[1:])]" >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Upload fetched data as artifact
