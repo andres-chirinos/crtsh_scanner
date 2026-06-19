@@ -108,7 +108,7 @@ jobs:
           args=(--csv data/domains.csv --state-dir data)
 
           if [[ "$OUTPUT_JSON" == "true" ]]; then
-            args+=(--json data/certificates.json)
+            args+=(--jsonl data/certificates.jsonl)
           fi
 
           if [[ "$OUTPUT_ANALYSIS" == "true" ]]; then
@@ -167,6 +167,6 @@ jobs:
             data/domains.csv
             data/domains.txt
             data/analysis.csv
-            data/certificates.json
+            data/certificates.jsonl
             data/seen_cert_ids.txt
           if-no-files-found: warn

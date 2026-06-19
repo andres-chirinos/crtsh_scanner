@@ -42,12 +42,16 @@ def update_domain_analysis(domain_name, not_before, not_after):
             not_before = datetime.datetime.fromisoformat(not_before.replace("Z", "+00:00"))
         except:
             not_before = None
+    elif isinstance(not_before, datetime.datetime) and not_before.tzinfo is None:
+        not_before = not_before.replace(tzinfo=datetime.timezone.utc)
             
     if isinstance(not_after, str):
         try:
             not_after = datetime.datetime.fromisoformat(not_after.replace("Z", "+00:00"))
         except:
             not_after = None
+    elif isinstance(not_after, datetime.datetime) and not_after.tzinfo is None:
+        not_after = not_after.replace(tzinfo=datetime.timezone.utc)
 
     if domain_name not in DOMAIN_ANALYSIS:
         DOMAIN_ANALYSIS[domain_name] = {'first_seen': not_before, 'last_seen': not_after, 'level': domain_name.count(".")}
@@ -90,8 +94,9 @@ def get_subdomains_by_keyword_db(keyword, args):
     pattern = f"%{keyword}%"
     
     query = """
-        SELECT cai.NAME_VALUE AS dominio, NULL AS NOT_BEFORE, NULL AS NOT_AFTER
+        SELECT cai.NAME_VALUE AS dominio, x509_notBefore(cai.CERTIFICATE) AS NOT_BEFORE, x509_notAfter(cai.CERTIFICATE) AS NOT_AFTER, ca.NAME AS ISSUER_NAME
         FROM certificate_and_identities cai
+        LEFT JOIN ca ON cai.ISSUER_CA_ID = ca.ID
         WHERE plainto_tsquery('certwatch', %s) @@ identities(cai.CERTIFICATE)
           AND (cai.NAME_VALUE ILIKE %s OR cai.NAME_VALUE = %s)
         LIMIT %s;
@@ -115,11 +120,13 @@ def get_subdomains_by_keyword_db(keyword, args):
                 name_value = record[0]
                 not_before = record[1]
                 not_after = record[2]
+                issuer_name = record[3]
                 
                 ALL_CERTS_JSON.append({
                     "name_value": name_value,
                     "not_before": not_before,
-                    "not_after": not_after
+                    "not_after": not_after,
+                    "issuer_name": issuer_name
                 })
                 
                 if name_value:
@@ -177,8 +184,9 @@ def get_subdomains_db(domain, args, extended=None):
         points_base = query_domain.count(".")
         points_max = points_base + args.levels
         query = """
-            SELECT cai.NAME_VALUE AS dominio, NULL AS NOT_BEFORE, NULL AS NOT_AFTER
+            SELECT cai.NAME_VALUE AS dominio, x509_notBefore(cai.CERTIFICATE) AS NOT_BEFORE, x509_notAfter(cai.CERTIFICATE) AS NOT_AFTER, ca.NAME AS ISSUER_NAME
             FROM certificate_and_identities cai
+            LEFT JOIN ca ON cai.ISSUER_CA_ID = ca.ID
             WHERE plainto_tsquery('certwatch', %s) @@ identities(cai.CERTIFICATE)
               AND (cai.NAME_VALUE ILIKE %s OR cai.NAME_VALUE = %s)
               AND (LENGTH(cai.NAME_VALUE) - LENGTH(REPLACE(cai.NAME_VALUE, '.', ''))) <= %s
@@ -187,8 +195,9 @@ def get_subdomains_db(domain, args, extended=None):
         query_params = (query_domain, pattern, query_domain, points_max, limit_val)
     else:
         query = """
-            SELECT cai.NAME_VALUE AS dominio, NULL AS NOT_BEFORE, NULL AS NOT_AFTER
+            SELECT cai.NAME_VALUE AS dominio, x509_notBefore(cai.CERTIFICATE) AS NOT_BEFORE, x509_notAfter(cai.CERTIFICATE) AS NOT_AFTER, ca.NAME AS ISSUER_NAME
             FROM certificate_and_identities cai
+            LEFT JOIN ca ON cai.ISSUER_CA_ID = ca.ID
             WHERE plainto_tsquery('certwatch', %s) @@ identities(cai.CERTIFICATE)
               AND (cai.NAME_VALUE ILIKE %s OR cai.NAME_VALUE = %s)
             LIMIT %s;
@@ -212,11 +221,13 @@ def get_subdomains_db(domain, args, extended=None):
                 name_value = record[0]
                 not_before = record[1]
                 not_after = record[2]
+                issuer_name = record[3]
                 
                 ALL_CERTS_JSON.append({
                     "name_value": name_value,
                     "not_before": not_before,
-                    "not_after": not_after
+                    "not_after": not_after,
+                    "issuer_name": issuer_name
                 })
                 
                 if name_value:
@@ -590,12 +601,13 @@ def save_analysis_csv(analysis_data, csv_path):
 
     return output_path
 
-def save_json(data, json_path):
-    output_path = Path(json_path)
+def save_jsonl(data, jsonl_path):
+    output_path = Path(jsonl_path)
     if output_path.parent and not output_path.parent.exists():
         output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, default=str)
+        for item in data:
+            f.write(json.dumps(item, default=str) + "\n")
 
 
 def main(args):
@@ -625,9 +637,9 @@ def main(args):
         output_path = save_domains_csv(all_domains, args.csv)
         print(f"CSV saved to: {output_path} ({len(all_domains)} domains)")
         
-    if getattr(args, "json", None):
-        output_path = save_json(ALL_CERTS_JSON, args.json)
-        print(f"JSON saved to: {args.json} ({len(ALL_CERTS_JSON)} cert records)")
+    if getattr(args, "jsonl", None):
+        output_path = save_jsonl(ALL_CERTS_JSON, args.jsonl)
+        print(f"JSONL saved to: {args.jsonl} ({len(ALL_CERTS_JSON)} cert records)")
         
     if getattr(args, "analyze_csv", None):
         output_path = save_analysis_csv(DOMAIN_ANALYSIS, args.analyze_csv)
@@ -706,12 +718,12 @@ if __name__ == "__main__":
         help="Extra subdomain levels to allow when querying by domain (e.g. 1, 2).",
     )
     parser.add_argument(
-        "--json",
+        "--jsonl",
         required=False,
         default=None,
         metavar="FILE",
         type=str,
-        help="Save raw certificate JSON data to file.",
+        help="Save raw certificate JSON data to file as JSON Lines (JSONL).",
     )
     parser.add_argument(
         "--analyze-csv",

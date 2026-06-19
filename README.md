@@ -30,7 +30,7 @@ optional arguments:
   --use-db              Query the crt.sh PostgreSQL database directly instead of the HTTP API.
   --db-limit DB_LIMIT   Maximum number of records to retrieve when using --use-db.
   --levels LEVELS       Extra subdomain levels to allow when querying by domain (e.g. 1, 2).
-  --json FILE           Save raw certificate JSON data to file.
+  --jsonl FILE          Save raw certificate data to file as JSON Lines (JSONL).
   --analyze-csv FILE    Save subdomain analysis (first seen, last seen, status, level) to CSV.
   --state-dir DIR       Directory to save state (seen certs cache). Default: state
 ```
@@ -92,11 +92,11 @@ New domains found via DB: 3. Total: 3
 {'example.com', 'www.example.com', 'test.example.com'}
 ```
 
-Perform a subdomain analysis, exporting raw JSON and analysis files.
+Perform a subdomain analysis, exporting raw JSONL and analysis files.
 ```console
-$ python crtsh_scanner.py -d example.com --analyze-csv analysis.csv --json certificates.json
+$ python crtsh_scanner.py -d example.com --analyze-csv analysis.csv --jsonl certificates.jsonl
 Domain: ['example.com'], Keyword: None, ...
-JSON saved to: certificates.json (15 cert records)
+JSONL saved to: certificates.jsonl (15 cert records)
 Analysis CSV saved to: analysis.csv (10 domains)
 ```
 The analysis CSV will contain: `domain, level, first_seen, last_seen, is_active`, allowing you to see exactly when a domain appeared, when it disappeared, and if it's currently valid (Vigente/Expirado).
