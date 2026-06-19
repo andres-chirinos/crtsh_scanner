@@ -94,13 +94,16 @@ def get_subdomains_by_keyword_db(keyword, args):
     pattern = f"%{keyword}%"
     
     query = """
-        SELECT cai.NAME_VALUE AS dominio, x509_notBefore(cai.CERTIFICATE) AS NOT_BEFORE, x509_notAfter(cai.CERTIFICATE) AS NOT_AFTER, ca.NAME AS ISSUER_NAME
+        SELECT cai.CERTIFICATE_ID, cai.NAME_VALUE AS dominio, x509_notBefore(cai.CERTIFICATE) AS NOT_BEFORE, x509_notAfter(cai.CERTIFICATE) AS NOT_AFTER, ca.NAME AS ISSUER_NAME
         FROM certificate_and_identities cai
         LEFT JOIN ca ON cai.ISSUER_CA_ID = ca.ID
         WHERE plainto_tsquery('certwatch', %s) @@ identities(cai.CERTIFICATE)
           AND (cai.NAME_VALUE ILIKE %s OR cai.NAME_VALUE = %s)
         LIMIT %s;
     """
+    known_ids = load_seen_cert_ids(args) if getattr(args, "uncached", False) else set()
+    processed_ids = set(known_ids)
+
     
     retries = 5
     for attempt in range(1, retries + 1):
@@ -117,10 +120,16 @@ def get_subdomains_by_keyword_db(keyword, args):
             
             count_before = len(subdomains)
             for record in records:
-                name_value = record[0]
-                not_before = record[1]
-                not_after = record[2]
-                issuer_name = record[3]
+                cert_id = str(record[0])
+                name_value = record[1]
+                not_before = record[2]
+                not_after = record[3]
+                issuer_name = record[4]
+                
+                if getattr(args, "uncached", False) and cert_id in known_ids:
+                    continue
+
+                processed_ids.add(cert_id)
                 
                 ALL_CERTS_JSON.append({
                     "name_value": name_value,
@@ -139,6 +148,10 @@ def get_subdomains_by_keyword_db(keyword, args):
             new_count = len(subdomains) - count_before
             if new_count > 0:
                 print(f"New domains found via DB: {new_count}. Total: {len(subdomains)}")
+                
+            if getattr(args, "uncached", False):
+                save_seen_cert_ids(args, processed_ids)
+                
             return subdomains
             
         except Exception as exc:
@@ -166,10 +179,10 @@ def get_subdomains_db(domain, args, extended=None):
 
     if getattr(args, "exclude_expired", False):
         print("Warning: --exclude_expired is not supported with --use-db yet. Returning all certificates.")
-    if getattr(args, "uncached", False):
-        print("Warning: --uncached is not supported with --use-db. Ignoring cache.")
 
     subdomains = set()
+    known_ids = load_seen_cert_ids(args) if getattr(args, "uncached", False) else set()
+    processed_ids = set(known_ids)
     private_suffix = get_domain_private_suffix(domain) if extended else ""
     
     query_domain = private_suffix if extended else domain
@@ -184,7 +197,7 @@ def get_subdomains_db(domain, args, extended=None):
         points_base = query_domain.count(".")
         points_max = points_base + args.levels
         query = """
-            SELECT cai.NAME_VALUE AS dominio, x509_notBefore(cai.CERTIFICATE) AS NOT_BEFORE, x509_notAfter(cai.CERTIFICATE) AS NOT_AFTER, ca.NAME AS ISSUER_NAME
+            SELECT cai.CERTIFICATE_ID, cai.NAME_VALUE AS dominio, x509_notBefore(cai.CERTIFICATE) AS NOT_BEFORE, x509_notAfter(cai.CERTIFICATE) AS NOT_AFTER, ca.NAME AS ISSUER_NAME
             FROM certificate_and_identities cai
             LEFT JOIN ca ON cai.ISSUER_CA_ID = ca.ID
             WHERE plainto_tsquery('certwatch', %s) @@ identities(cai.CERTIFICATE)
@@ -195,7 +208,7 @@ def get_subdomains_db(domain, args, extended=None):
         query_params = (query_domain, pattern, query_domain, points_max, limit_val)
     else:
         query = """
-            SELECT cai.NAME_VALUE AS dominio, x509_notBefore(cai.CERTIFICATE) AS NOT_BEFORE, x509_notAfter(cai.CERTIFICATE) AS NOT_AFTER, ca.NAME AS ISSUER_NAME
+            SELECT cai.CERTIFICATE_ID, cai.NAME_VALUE AS dominio, x509_notBefore(cai.CERTIFICATE) AS NOT_BEFORE, x509_notAfter(cai.CERTIFICATE) AS NOT_AFTER, ca.NAME AS ISSUER_NAME
             FROM certificate_and_identities cai
             LEFT JOIN ca ON cai.ISSUER_CA_ID = ca.ID
             WHERE plainto_tsquery('certwatch', %s) @@ identities(cai.CERTIFICATE)
@@ -218,10 +231,16 @@ def get_subdomains_db(domain, args, extended=None):
             
             count_before = len(subdomains)
             for record in records:
-                name_value = record[0]
-                not_before = record[1]
-                not_after = record[2]
-                issuer_name = record[3]
+                cert_id = str(record[0])
+                name_value = record[1]
+                not_before = record[2]
+                not_after = record[3]
+                issuer_name = record[4]
+                
+                if getattr(args, "uncached", False) and cert_id in known_ids:
+                    continue
+
+                processed_ids.add(cert_id)
                 
                 ALL_CERTS_JSON.append({
                     "name_value": name_value,
@@ -241,6 +260,10 @@ def get_subdomains_db(domain, args, extended=None):
             new_count = len(subdomains) - count_before
             if new_count > 0:
                 print(f"New domains found via DB: {new_count}. Total: {len(subdomains)}")
+                
+            if getattr(args, "uncached", False):
+                save_seen_cert_ids(args, processed_ids)
+                
             return subdomains
             
         except Exception as exc:
@@ -267,7 +290,10 @@ def normalize_domain(value):
     value = value.strip().lower()
     if value.startswith("*."):
         value = value[2:]
-    return value.strip(".")
+    value = value.strip(".")
+    if " " in value or "," in value or "@" in value or "\\" in value or "”" in value or '"' in value:
+        return ""
+    return value
 
 
 def load_seen_cert_ids(args):

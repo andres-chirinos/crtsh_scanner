@@ -103,6 +103,15 @@ jobs:
             echo "OUTPUT_ANALYSIS=true" >> "$GITHUB_ENV"
           fi
 
+      - name: Cache crt.sh processed IDs
+        if: env.UNCACHED == 'true'
+        uses: actions/cache@v4
+        with:
+          path: data/seen_cert_ids.txt
+          key: crtsh-state-${{ env.QUERY_TYPE }}-${{ env.QUERY }}-${{ github.run_id }}
+          restore-keys: |
+            crtsh-state-${{ env.QUERY_TYPE }}-${{ env.QUERY }}-
+
       - name: Fetch domains and generate results
         run: |
           args=(--csv data/domains.csv --state-dir data)
